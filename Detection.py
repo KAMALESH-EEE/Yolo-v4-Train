@@ -1,62 +1,40 @@
 import cv2
 import numpy as np
-import tensorflow as tf
 
-# Load the TensorFlow Lite model
-interpreter = tf.lite.Interpreter(model_path='detect.tflite')
+net = cv2.dnn.readNet("yolov4-tiny-custom_best1.weights", "yolov4-tiny-custom1.cfg")
+cap=cv2.VideoCapture(0)
 
-# Allocate the tensors
-interpreter.allocate_tensors()
 
-# Capture a frame from the webcam
-cap = cv2.VideoCapture(0)
+classes =['Helthy','Defect']
+
 
 while True:
-    ret, frame = cap.read()
+    _,image = cap.read() 
+    height, width = image.shape[:2]
 
-     # Resize the frame to the expected input size of the model
-    frame = cv2.resize(frame, (320, 320))
-   
-    # Preprocess the frame
 
-    frame = np.expand_dims(frame, axis=0)
-    input_details = interpreter.get_input_details()
-    input_shape = input_details[0]['shape']
+    blob = cv2.dnn.blobFromImage(image, 1 / 255.0, (416, 416), swapRB=True, crop=False)
+    net.setInput(blob)
+    layer_names = net.getUnconnectedOutLayersNames()
+    outputs = net.forward(layer_names)
 
-    
-    frame = frame.astype(np.float32) / 255.0
 
-    # Run the model
-    interpreter.set_tensor(interpreter.get_input_details()[0]['index'], frame)
-    interpreter.invoke()
+    for output in outputs:
+        for detection in output:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
 
-    # Get the output results
-    output_details = interpreter.get_output_details()
-    output_tensor = interpreter.get_tensor(output_details[0]['index'])
-    
-    # Draw bounding boxes around the detected objects
-    for detection in output_tensor:
-        class_id = int(detection[0])
-        score = detection[1]
-        if score > 0.75:
-            bbox = detection[2:6]
-            (startX, startY, endX, endY) = (bbox[0] * frame.shape[1], bbox[1] * frame.shape[0], bbox[2] * frame.shape[1], bbox[3] * frame.shape[0])
-            cv2.rectangle(frame, (int(startX),int ( startY)), (int(endX), int(endY)), (0, 255, 0), 2)
-            cv2.putText(frame, str(class_id), (int(startX),int ( startY)-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            if class_id==0:
-                print("yes")
-    
-    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-    frame = np.squeeze(frame, axis=0)
-# Display the frame
-    cv2.imshow('Frame', frame)
+            if confidence > 0.85: 
+                center_x, center_y, w, h = (detection[:4] * np.array([width, height, width, height])).astype(int)
+                x, y = int(center_x - w / 2), int(center_y - h / 2)
 
-# Press 'q' to quit
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+                color = (0, 255, 0) 
+                cv2.rectangle(image, (x, y), (x + w, y + h), color, 2)
+                label = f"{classes[class_id]}: {confidence:.2f}"
+                print("YES")
+                cv2.putText(image, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-# Release the webcam
-cap.release()
-
-# Destroy all windows
+    cv2.imshow("YOLOv4-Tiny Object Detection", image)
+    cv2.waitKey(1)
 cv2.destroyAllWindows()
